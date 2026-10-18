@@ -14,6 +14,8 @@ steps:
     displayName: 'Verify agent'
 
   - script: |
+      docker rm -f shopsphere-postgres shopsphere-redis || true
+
       docker run -d --name shopsphere-postgres \
         -p 5432:5432 \
         -e POSTGRES_USER=ci_user \
@@ -54,6 +56,7 @@ steps:
       python3 -m venv .venv
       source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
+      export DATABASE_URL="postgresql+psycopg://ci_user:ci_password@127.0.0.1:5432/ecommerce"
       pytest -v
     displayName: 'Test inventory service'
 
@@ -62,6 +65,7 @@ steps:
       python3 -m venv .venv
       source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
+      export DATABASE_URL="postgresql+psycopg://ci_user:ci_password@127.0.0.1:5432/ecommerce"
       pytest -v
     displayName: 'Test order service'
 
