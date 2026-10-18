@@ -1,6 +1,5 @@
 
 trigger: none
-pr: none
 
 pool:
   name: ShopSphere-Pool
@@ -16,7 +15,6 @@ variables:
 
 steps:
   - checkout: self
-    fetchDepth: 0
 
   - script: |
       docker run --rm \
@@ -36,118 +34,81 @@ steps:
   - script: |
       set -eu
       cd "$(Build.SourcesDirectory)"
-      REPORT_DIR="$(Build.ArtifactStagingDirectory)/trivy-reports"
-      mkdir -p "$REPORT_DIR"
+      mkdir -p "$(Build.ArtifactStagingDirectory)/trivy-reports"
       wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl \
-        -O "$REPORT_DIR/html.tpl"
+        -O "$(Build.ArtifactStagingDirectory)/trivy-reports/html.tpl"
       trivy fs \
         --scanners vuln,misconfig \
         --format template \
-        --template "@$REPORT_DIR/html.tpl" \
-        --output "$REPORT_DIR/trivy-fs-report.html" \
+        --template "@$(Build.ArtifactStagingDirectory)/trivy-reports/html.tpl" \
+        --output "$(Build.ArtifactStagingDirectory)/trivy-reports/trivy-fs-report.html" \
         .
     displayName: 'Run Trivy Filesystem Scan and Generate HTML Report'
 
   - script: |
-      set -eu
-      cd "$(Build.SourcesDirectory)"
-
-      PREVIOUS="$(git rev-parse HEAD~1 2>/dev/null || true)"
-      CURRENT="$(git rev-parse HEAD)"
-      CHANGES="$(mktemp)"
-      trap 'rm -f "$CHANGES"' EXIT
-
-      if [ -z "$PREVIOUS" ]; then
-        git ls-files > "$CHANGES"
-      else
-        git diff --name-only "$PREVIOUS" "$CURRENT" > "$CHANGES"
-      fi
-
-      SERVICES="product-service cart-service order-service inventory-service payment-service frontend"
-      BUILD_ALL=false
-
-      if grep -Eq '(^|/)(azure-pipelines-ci-build\.yml|services/.*/requirements\.txt|services/.*/Dockerfile|frontend/Dockerfile)$|^requirements\.txt$' "$CHANGES"; then
-        BUILD_ALL=true
-      fi
-
-      if grep -Eq '^services/|^frontend/' "$CHANGES" && [ "$BUILD_ALL" = false ]; then
-        :
-      fi
-
-      : > "$(Build.ArtifactStagingDirectory)/changed-images.txt"
-
-      for service in $SERVICES; do
-        case "$service" in
-          frontend) PATH_PREFIX="frontend/" ;;
-          *) PATH_PREFIX="services/$service/" ;;
-        esac
-
-        if [ "$BUILD_ALL" = true ] || grep -q "^$PATH_PREFIX" "$CHANGES"; then
-          echo "$service" >> "$(Build.ArtifactStagingDirectory)/changed-images.txt"
-        fi
-      done
-
-      if [ ! -s "$(Build.ArtifactStagingDirectory)/changed-images.txt" ]; then
-        echo "No application service changes detected. No images need building."
-      else
-        echo "Images selected for build:"
-        cat "$(Build.ArtifactStagingDirectory)/changed-images.txt"
-      fi
-    displayName: 'Detect Changed Services'
-
-  - script: |
-      set -eu
+      set -e
       az login --identity
       az acr login --name "$(ACR_NAME)"
     displayName: 'Authenticate to Azure Container Registry'
-    condition: succeeded()
 
   - script: |
-      set -eu
-      cd "$(Build.SourcesDirectory)"
-      while IFS= read -r service; do
-        [ -n "$service" ] || continue
-        case "$service" in
-          frontend) CONTEXT="frontend" ;;
-          *) CONTEXT="services/$service" ;;
-        esac
-        docker build \
-          -t "$(ACR_LOGIN_SERVER)/$service:$(IMAGE_TAG)" \
-          "$CONTEXT"
-      done < "$(Build.ArtifactStagingDirectory)/changed-images.txt"
-    displayName: 'Build Changed Docker Images'
-    condition: succeeded()
+      set -e
+      docker build -t "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)" services/product-service
+      docker build -t "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)" services/cart-service
+      docker build -t "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)" services/order-service
+      docker build -t "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)" services/inventory-service
+      docker build -t "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)" services/payment-service
+      docker build -t "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)" frontend
+    displayName: 'Build All Six Docker Images'
 
   - script: |
-      set -eu
+      set -u
       REPORT_DIR="$(Build.ArtifactStagingDirectory)/trivy-reports"
       TEMPLATE="$REPORT_DIR/html.tpl"
+      SCAN_FAILED=0
 
-      while IFS= read -r service; do
-        [ -n "$service" ] || continue
+      for service in product-service cart-service order-service inventory-service payment-service frontend; do
         IMAGE="$(ACR_LOGIN_SERVER)/$service:$(IMAGE_TAG)"
+        echo "Generating Trivy HTML report for $IMAGE"
 
-        trivy image \
+        if ! trivy image \
           --format template \
           --template "@$TEMPLATE" \
           --output "$REPORT_DIR/trivy-image-$service.html" \
-          "$IMAGE"
+          "$IMAGE"; then
+          echo "##vso[task.logissue type=error]HTML report generation failed for $service"
+          SCAN_FAILED=1
+          continue
+        fi
 
-        trivy image \
+        echo "Checking HIGH and CRITICAL vulnerabilities in $IMAGE"
+
+        if ! trivy image \
           --exit-code 1 \
           --severity HIGH,CRITICAL \
-          "$IMAGE"
-      done < "$(Build.ArtifactStagingDirectory)/changed-images.txt"
-    displayName: 'Scan Changed Images and Generate HTML Reports'
-    condition: succeeded()
+          "$IMAGE"; then
+          echo "##vso[task.logissue type=error]HIGH or CRITICAL vulnerabilities found in $service, or the scan failed"
+          SCAN_FAILED=1
+        fi
+      done
+
+      if [ "$SCAN_FAILED" -ne 0 ]; then
+        echo "Trivy found security issues or a scan/report error. Review the published reports."
+        exit 1
+      fi
+
+      echo "All six image scans passed the HIGH/CRITICAL security gate."
+    displayName: 'Scan All Images and Generate HTML Reports'
 
   - script: |
-      set -eu
-      while IFS= read -r service; do
-        [ -n "$service" ] || continue
-        docker push "$(ACR_LOGIN_SERVER)/$service:$(IMAGE_TAG)"
-      done < "$(Build.ArtifactStagingDirectory)/changed-images.txt"
-    displayName: 'Push Scanned Images to ACR'
+      set -e
+      docker push "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)"
+      docker push "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)"
+      docker push "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)"
+      docker push "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)"
+      docker push "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)"
+      docker push "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)"
+    displayName: 'Push Images to ACR'
     condition: succeeded()
 
   - task: PublishPipelineArtifact@1
