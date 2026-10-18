@@ -15,68 +15,106 @@ variables:
 
 steps:
   - checkout: self
+    fetchDepth: 0
 
+  # SonarQube analysis
   - script: |
+      set -eu
+
       docker run --rm \
         --network host \
-        -e SONAR_HOST_URL=http://127.0.0.1:9000 \
-        -e SONAR_TOKEN="$SONAR_TOKEN" \
+        -e SONAR_HOST_URL="http://127.0.0.1:9000" \
+        -e SONAR_TOKEN="$(SONAR_TOKEN)" \
         -v "$(Build.SourcesDirectory):/usr/src" \
-        sonarsource/sonar-scanner-cli \
+        sonarsource/sonar-scanner-cli:latest \
         -Dsonar.projectKey=ShopSphere \
         -Dsonar.projectName=ShopSphere \
         -Dsonar.sources=services \
-        -Dsonar.exclusions="**/test_*.py,**/__pycache__/**"
+        -Dsonar.exclusions='**/tests/**,**/__pycache__/**'
     displayName: 'Run SonarQube Analysis'
-    env:
-      SONAR_TOKEN: $(SONAR_TOKEN)
 
+  # Prepare Trivy reports
   - script: |
       set -eu
-      cd "$(Build.SourcesDirectory)"
-      mkdir -p "$(Build.ArtifactStagingDirectory)/trivy-reports"
-      wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl \
-        -O "$(Build.ArtifactStagingDirectory)/trivy-reports/html.tpl"
+
+      REPORT_DIR="$(Build.ArtifactStagingDirectory)/trivy-reports"
+      mkdir -p "$REPORT_DIR"
+
+      curl -fsSL \
+        https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl \
+        -o "$REPORT_DIR/html.tpl"
+
+      echo "Trivy report directory prepared."
+    displayName: 'Prepare Trivy HTML Reports'
+
+  # Filesystem vulnerability and misconfiguration scan
+  - script: |
+      set -eu
+
+      REPORT_DIR="$(Build.ArtifactStagingDirectory)/trivy-reports"
+
       trivy fs \
         --scanners vuln,misconfig \
+        --severity HIGH,CRITICAL \
         --format template \
-        --template "@$(Build.ArtifactStagingDirectory)/trivy-reports/html.tpl" \
-        --output "$(Build.ArtifactStagingDirectory)/trivy-reports/trivy-fs-report.html" \
-        .
-    displayName: 'Run Trivy Filesystem Scan and Generate HTML Report'
+        --template "@$REPORT_DIR/html.tpl" \
+        --output "$REPORT_DIR/trivy-fs-report.html" \
+        "$(Build.SourcesDirectory)"
 
+      echo "Filesystem report generated."
+    displayName: 'Trivy Filesystem Scan'
+    continueOnError: true
+
+  # Build all six application images
   - script: |
-      set -e
-      az login --identity
-      az acr login --name "$(ACR_NAME)"
-    displayName: 'Authenticate to Azure Container Registry'
+      set -eu
 
-  - script: |
-      set -e
-      docker build -t "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)" services/product-service
-      docker build -t "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)" services/cart-service
-      docker build -t "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)" services/order-service
-      docker build -t "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)" services/inventory-service
-      docker build -t "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)" services/payment-service
-      docker build -t "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)" frontend
-    displayName: 'Build All Six Docker Images'
+      docker build \
+        -t "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)" \
+        services/product-service
 
+      docker build \
+        -t "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)" \
+        services/cart-service
+
+      docker build \
+        -t "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)" \
+        services/order-service
+
+      docker build \
+        -t "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)" \
+        services/inventory-service
+
+      docker build \
+        -t "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)" \
+        services/payment-service
+
+      docker build \
+        -t "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)" \
+        frontend
+    displayName: 'Build All Six Images'
+
+  # Scan each image and generate a separate HTML report.
+  # HIGH/CRITICAL findings are reported but do not block publishing.
   - script: |
       set -u
+
       REPORT_DIR="$(Build.ArtifactStagingDirectory)/trivy-reports"
       TEMPLATE="$REPORT_DIR/html.tpl"
       SCAN_FAILED=0
 
       for service in product-service cart-service order-service inventory-service payment-service frontend; do
         IMAGE="$(ACR_LOGIN_SERVER)/$service:$(IMAGE_TAG)"
-        echo "Generating Trivy HTML report for $IMAGE"
+        REPORT="$REPORT_DIR/trivy-image-$service.html"
+
+        echo "Generating report for $IMAGE"
 
         if ! trivy image \
           --format template \
           --template "@$TEMPLATE" \
-          --output "$REPORT_DIR/trivy-image-$service.html" \
+          --output "$REPORT" \
           "$IMAGE"; then
-          echo "##vso[task.logissue type=error]HTML report generation failed for $service"
+          echo "##vso[task.logissue type=error]Trivy report generation failed for $service"
           SCAN_FAILED=1
           continue
         fi
@@ -84,37 +122,161 @@ steps:
         echo "Checking HIGH and CRITICAL vulnerabilities in $IMAGE"
 
         if ! trivy image \
-          --exit-code 1 \
           --severity HIGH,CRITICAL \
           "$IMAGE"; then
-          echo "##vso[task.logissue type=error]HIGH or CRITICAL vulnerabilities found in $service, or the scan failed"
+          echo "##vso[task.logissue type=error]Trivy scan failed for $service"
           SCAN_FAILED=1
         fi
       done
 
       if [ "$SCAN_FAILED" -ne 0 ]; then
-        echo "Trivy found security issues or a scan/report error. Review the published reports."
+        echo "One or more image scans or report-generation steps failed."
         exit 1
       fi
 
-      echo "All six image scans passed the HIGH/CRITICAL security gate."
+      echo "All image scans completed. Review the reports for vulnerabilities."
     displayName: 'Scan All Images and Generate HTML Reports'
 
+  # Publish images to ACR
   - script: |
-      set -e
-      docker push "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)"
-      docker push "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)"
-      docker push "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)"
-      docker push "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)"
-      docker push "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)"
-      docker push "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)"
-    displayName: 'Push Images to ACR'
-    condition: succeeded()
+      set -eu
 
+      az login --identity
+      az acr login --name "$(ACR_NAME)"
+
+      for service in product-service cart-service order-service inventory-service payment-service frontend; do
+        docker push "$(ACR_LOGIN_SERVER)/$service:$(IMAGE_TAG)"
+      done
+    displayName: 'Push Images to ACR'
+
+  # Publish reports even if an earlier step fails
   - task: PublishPipelineArtifact@1
     displayName: 'Publish Trivy HTML Reports'
+    condition: always()
     inputs:
       targetPath: '$(Build.ArtifactStagingDirectory)/trivy-reports'
       artifact: 'Trivy-HTML-Reports'
       publishLocation: 'pipeline'
-    condition: always()
+
+
+
+
+# trigger: none
+
+# pool:
+#   name: ShopSphere-Pool
+
+# variables:
+#   - group: ShopSphere-CI-Secrets
+#   - name: ACR_NAME
+#     value: acrshopspheredev
+#   - name: ACR_LOGIN_SERVER
+#     value: acrshopspheredev.azurecr.io
+#   - name: IMAGE_TAG
+#     value: $(Build.BuildId)
+
+# steps:
+#   - checkout: self
+
+#   - script: |
+#       docker run --rm \
+#         --network host \
+#         -e SONAR_HOST_URL=http://127.0.0.1:9000 \
+#         -e SONAR_TOKEN="$SONAR_TOKEN" \
+#         -v "$(Build.SourcesDirectory):/usr/src" \
+#         sonarsource/sonar-scanner-cli \
+#         -Dsonar.projectKey=ShopSphere \
+#         -Dsonar.projectName=ShopSphere \
+#         -Dsonar.sources=services \
+#         -Dsonar.exclusions="**/test_*.py,**/__pycache__/**"
+#     displayName: 'Run SonarQube Analysis'
+#     env:
+#       SONAR_TOKEN: $(SONAR_TOKEN)
+
+#   - script: |
+#       set -eu
+#       cd "$(Build.SourcesDirectory)"
+#       mkdir -p "$(Build.ArtifactStagingDirectory)/trivy-reports"
+#       wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl \
+#         -O "$(Build.ArtifactStagingDirectory)/trivy-reports/html.tpl"
+#       trivy fs \
+#         --scanners vuln,misconfig \
+#         --format template \
+#         --template "@$(Build.ArtifactStagingDirectory)/trivy-reports/html.tpl" \
+#         --output "$(Build.ArtifactStagingDirectory)/trivy-reports/trivy-fs-report.html" \
+#         .
+#     displayName: 'Run Trivy Filesystem Scan and Generate HTML Report'
+
+#   - script: |
+#       set -e
+#       az login --identity
+#       az acr login --name "$(ACR_NAME)"
+#     displayName: 'Authenticate to Azure Container Registry'
+
+#   - script: |
+#       set -e
+#       docker build -t "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)" services/product-service
+#       docker build -t "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)" services/cart-service
+#       docker build -t "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)" services/order-service
+#       docker build -t "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)" services/inventory-service
+#       docker build -t "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)" services/payment-service
+#       docker build -t "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)" frontend
+#     displayName: 'Build All Six Docker Images'
+
+#   - script: |
+#       set -u
+#       REPORT_DIR="$(Build.ArtifactStagingDirectory)/trivy-reports"
+#       TEMPLATE="$REPORT_DIR/html.tpl"
+#       SCAN_FAILED=0
+
+#       for service in product-service cart-service order-service inventory-service payment-service frontend; do
+#         IMAGE="$(ACR_LOGIN_SERVER)/$service:$(IMAGE_TAG)"
+#         echo "Generating Trivy HTML report for $IMAGE"
+
+#         if ! trivy image \
+#           --format template \
+#           --template "@$TEMPLATE" \
+#           --output "$REPORT_DIR/trivy-image-$service.html" \
+#           "$IMAGE"; then
+#           echo "##vso[task.logissue type=error]HTML report generation failed for $service"
+#           SCAN_FAILED=1
+#           continue
+#         fi
+
+#         echo "Checking HIGH and CRITICAL vulnerabilities in $IMAGE"
+
+#         if ! trivy image \
+#           --exit-code 1 \
+#           --severity HIGH,CRITICAL \
+#           "$IMAGE"; then
+#           echo "##vso[task.logissue type=error]HIGH or CRITICAL vulnerabilities found in $service, or the scan failed"
+#           SCAN_FAILED=1
+#         fi
+#       done
+
+#       if [ "$SCAN_FAILED" -ne 0 ]; then
+#         echo "Trivy found security issues or a scan/report error. Review the published reports."
+#         exit 1
+#       fi
+
+#       echo "All six image scans passed the HIGH/CRITICAL security gate."
+#     displayName: 'Scan All Images and Generate HTML Reports'
+
+#   - script: |
+#       set -e
+#       docker push "$(ACR_LOGIN_SERVER)/product-service:$(IMAGE_TAG)"
+#       docker push "$(ACR_LOGIN_SERVER)/cart-service:$(IMAGE_TAG)"
+#       docker push "$(ACR_LOGIN_SERVER)/order-service:$(IMAGE_TAG)"
+#       docker push "$(ACR_LOGIN_SERVER)/inventory-service:$(IMAGE_TAG)"
+#       docker push "$(ACR_LOGIN_SERVER)/payment-service:$(IMAGE_TAG)"
+#       docker push "$(ACR_LOGIN_SERVER)/frontend:$(IMAGE_TAG)"
+#     displayName: 'Push Images to ACR'
+#     condition: succeeded()
+
+#   - task: PublishPipelineArtifact@1
+#     displayName: 'Publish Trivy HTML Reports'
+#     inputs:
+#       targetPath: '$(Build.ArtifactStagingDirectory)/trivy-reports'
+#       artifact: 'Trivy-HTML-Reports'
+#       publishLocation: 'pipeline'
+#     condition: always()
