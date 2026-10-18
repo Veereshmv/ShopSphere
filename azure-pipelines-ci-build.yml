@@ -1,0 +1,26 @@
+
+trigger: none
+
+pool:
+  name: ShopSphere-Pool
+
+variables:
+  - group: ShopSphere-CI-Secrets
+
+steps:
+  - checkout: self
+
+  - script: |
+      docker run --rm \
+        --network host \
+        -e SONAR_HOST_URL=http://127.0.0.1:9000 \
+        -e SONAR_TOKEN="$SONAR_TOKEN" \
+        -v "$(Build.SourcesDirectory):/usr/src" \
+        sonarsource/sonar-scanner-cli \
+        -Dsonar.projectKey=ShopSphere \
+        -Dsonar.projectName=ShopSphere \
+        -Dsonar.sources=services \
+        -Dsonar.exclusions="**/test_*.py,**/__pycache__/**"
+    displayName: 'Run SonarQube Analysis'
+    env:
+      SONAR_TOKEN: $(SONAR_TOKEN)
