@@ -24,3 +24,8 @@ steps:
     displayName: 'Run SonarQube Analysis'
     env:
       SONAR_TOKEN: $(SONAR_TOKEN)
+
+  - script: |
+      cd "$(Build.SourcesDirectory)"
+      trivy fs --scanners vuln,misconfig .
+    displayName: 'Run Trivy Filesystem Scan'
