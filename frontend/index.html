@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Shop electronics at ShopSphere.">
+    <title>ShopSphere | Electronics Store</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="site-header">
+        <a class="brand" href="#">ShopSphere<span>.</span></a>
+
+        <nav aria-label="Main navigation">
+            <a href="#products">Shop</a>
+            <a href="#orders">My Orders</a>
+        </nav>
+
+        <button id="cart-toggle" class="cart-button" type="button">
+            Cart <span id="cart-count">0</span>
+        </button>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-content">
+                <p class="eyebrow">YOUR EVERYDAY TECH STORE</p>
+                <h1>Technology that<br>moves you forward.</h1>
+                <p>Discover useful tech, thoughtful design and everyday essentials.</p>
+                <a class="primary-button" href="#products">Explore products</a>
+            </div>
+            <div class="hero-art" aria-hidden="true">
+                <div class="art-circle"></div>
+                <div class="art-device device-one"></div>
+                <div class="art-device device-two"></div>
+                <div class="art-device device-three"></div>
+            </div>
+        </section>
+
+        <section id="products" class="section">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">CURATED FOR YOU</p>
+                    <h2>Featured products</h2>
+                </div>
+                <p>Everyday essentials. Carefully selected.</p>
+            </div>
+
+            <div id="product-list" class="product-grid">
+                <p class="loading-message">Loading products…</p>
+            </div>
+            <p id="product-message" class="message" role="status"></p>
+        </section>
+
+        <section id="cart" class="section cart-section">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">YOUR SELECTION</p>
+                    <h2>Shopping cart</h2>
+                </div>
+            </div>
+
+            <div id="cart-items">
+                <p>Your cart is empty. Add a product to get started.</p>
+            </div>
+
+            <div class="cart-summary">
+                <span>Subtotal</span>
+                <strong id="cart-total">₹0.00</strong>
+            </div>
+
+            <button id="checkout-button" class="primary-button" type="button" disabled>
+                Proceed to checkout
+            </button>
+            <p id="cart-message" class="message" role="status"></p>
+        </section>
+
+        <section id="checkout" class="section checkout-section">
+            <p class="eyebrow">ALMOST YOURS</p>
+            <h2>Checkout</h2>
+
+            <form id="checkout-form">
+                <label for="user-id">Customer ID</label>
+                <input id="user-id" name="userId" type="text"
+                       value="customer-1" maxlength="100" required>
+
+                <p class="checkout-note">
+                    This demo uses simulated payments. No real payment details are collected.
+                </p>
+
+                <button class="primary-button" type="submit">
+                    Place order &amp; simulate payment
+                </button>
+            </form>
+            <p id="checkout-message" class="message" role="status"></p>
+        </section>
+
+        <section id="orders" class="section">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">YOUR PURCHASES</p>
+                    <h2>Order history</h2>
+                </div>
+                <button id="refresh-orders" class="secondary-button" type="button">
+                    Refresh orders
+                </button>
+            </div>
+            <div id="order-list">
+                <p>Enter your customer ID at checkout to view your orders.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <a class="brand" href="#">ShopSphere<span>.</span></a>
+        <p>Built as a cloud-native e-commerce demonstration.</p>
+    </footer>
+
+    <script src="app.js" defer></script>
+</body>
+</html>
+
