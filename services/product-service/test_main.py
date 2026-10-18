@@ -27,8 +27,8 @@ def test_list_products(client):
     assert response.status_code == 200
 
     data = response.json()
-    assert data["count"] == 3
-    assert len(data["products"]) == 3
+    assert isinstance(data, list)
+    assert len(data) == 3
 
 
 def test_get_product(client):
