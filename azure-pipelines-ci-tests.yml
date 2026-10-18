@@ -1,6 +1,6 @@
 
 trigger:
-  - main
+  - none
 
 pool:
   name: ShopSphere-Pool
