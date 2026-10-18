@@ -9,115 +9,71 @@ steps:
   - checkout: self
 
   - script: |
-      set -e
-      echo "Agent: $(Agent.Name)"
-      echo "Branch: $(Build.SourceBranch)"
       python3 --version
       docker --version
-      docker compose version
-    displayName: "Verify self-hosted agent"
+    displayName: 'Verify agent'
 
   - script: |
-      set -e
-
-      cleanup() {
-        docker rm -f shopsphere-ci-postgres shopsphere-ci-redis 2>/dev/null || true
-        docker network rm shopsphere-ci 2>/dev/null || true
-      }
-      trap cleanup EXIT
-
-      cleanup
-      docker network create shopsphere-ci
-
-      docker run -d --rm \
-        --name shopsphere-ci-postgres \
-        --network shopsphere-ci \
+      docker run -d --name shopsphere-postgres \
         -p 5432:5432 \
         -e POSTGRES_USER=ci_user \
         -e POSTGRES_PASSWORD=ci_password \
         -e POSTGRES_DB=ecommerce \
         postgres:16
 
-      docker run -d --rm \
-        --name shopsphere-ci-redis \
-        --network shopsphere-ci \
+      docker run -d --name shopsphere-redis \
         -p 6379:6379 \
         redis:7-alpine
 
-      ready=0
-      for i in $(seq 1 30); do
-        if docker exec shopsphere-ci-postgres \
-          pg_isready -U ci_user -d ecommerce >/dev/null 2>&1; then
-          ready=1
-          break
-        fi
-        sleep 2
-      done
+      until docker exec shopsphere-postgres \
+        pg_isready -U ci_user -d ecommerce; do sleep 2; done
 
-      if [ "$ready" -ne 1 ]; then
-        docker logs shopsphere-ci-postgres
-        exit 1
-      fi
-
-      for i in $(seq 1 30); do
-        if docker exec shopsphere-ci-redis redis-cli ping | grep -q PONG; then
-          break
-        fi
-        sleep 2
-      done
-
-      docker exec shopsphere-ci-redis redis-cli ping | grep -q PONG
-    displayName: "Start CI database dependencies"
+      until docker exec shopsphere-redis redis-cli ping | grep -q PONG; do sleep 2; done
+    displayName: 'Start PostgreSQL and Redis'
 
   - script: |
-      set -e
       cd services/product-service
-      python3 -m venv .ci-venv
-      . .ci-venv/bin/activate
-      python -m pip install --upgrade pip
+      python3 -m venv .venv
+      source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
       export DATABASE_URL="postgresql+psycopg://ci_user:ci_password@127.0.0.1:5432/ecommerce"
-      pytest -q
-    displayName: "Test product service"
+      pytest -v
+    displayName: 'Test product service'
 
   - script: |
-      set -e
       cd services/cart-service
-      python3 -m venv .ci-venv
-      . .ci-venv/bin/activate
-      python -m pip install --upgrade pip
+      python3 -m venv .venv
+      source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
       export REDIS_URL="redis://127.0.0.1:6379/0"
-      pytest -q
-    displayName: "Test cart service"
+      pytest -v
+    displayName: 'Test cart service'
 
   - script: |
-      set -e
       cd services/inventory-service
-      python3 -m venv .ci-venv
-      . .ci-venv/bin/activate
-      python -m pip install --upgrade pip
+      python3 -m venv .venv
+      source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
-      pip install sqlalchemy
-      pytest -q
-    displayName: "Test inventory service"
+      pytest -v
+    displayName: 'Test inventory service'
 
   - script: |
-      set -e
       cd services/order-service
-      python3 -m venv .ci-venv
-      . .ci-venv/bin/activate
-      python -m pip install --upgrade pip
+      python3 -m venv .venv
+      source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
-      pytest -q
-    displayName: "Test order service"
+      pytest -v
+    displayName: 'Test order service'
 
   - script: |
-      set -e
       cd services/payment-service
-      python3 -m venv .ci-venv
-      . .ci-venv/bin/activate
-      python -m pip install --upgrade pip
+      python3 -m venv .venv
+      source .venv/bin/activate
       pip install -r requirements.txt pytest httpx
-      pytest -q
-    displayName: "Test payment service"
+      pytest -v
+    displayName: 'Test payment service'
+
+  - script: |
+      docker rm -f shopsphere-postgres shopsphere-redis || true
+    displayName: 'Clean up'
+    condition: always()
