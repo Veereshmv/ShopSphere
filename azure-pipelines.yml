@@ -1,0 +1,17 @@
+trigger:
+  - main
+
+pool:
+  name: ShopSphere-Pool
+
+steps:
+  - checkout: self
+
+  - script: |
+      echo "ShopSphere CI pipeline is running"
+      echo "Agent: $(Agent.Name)"
+      echo "Source branch: $(Build.SourceBranch)"
+      echo "Repository: $(Build.Repository.Name)"
+      python3 --version
+      docker --version
+    displayName: "Verify self-hosted agent"
