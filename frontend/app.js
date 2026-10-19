@@ -1,9 +1,9 @@
 const API = {
-    products: "http://localhost:8000",
-    cart: "http://localhost:8002",
-    inventory: "http://localhost:8003",
-    orders: "http://localhost:8004",
-    payments: "http://localhost:8005",
+    products: "/api/products",
+    cart: "/api/cart",
+    inventory: "/api/inventory",
+    orders: "/api/orders",
+    payments: "/api/payments",
 };
 
 const state = {
