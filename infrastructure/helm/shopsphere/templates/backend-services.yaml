@@ -1,0 +1,77 @@
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.image }}
+spec:
+  replicas: {{ $.Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $svc.image }}
+  template:
+    metadata:
+      labels:
+        app: {{ $svc.image }}
+    spec:
+      containers:
+        - name: {{ $svc.image }}
+          image: "{{ $.Values.image.registry }}/{{ $svc.image }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+{{- if $svc.databaseEnabled }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.secrets.kubernetesSecretName }}
+                  key: DATABASE_URL
+{{- else if $svc.redisEnabled }}
+          env:
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+{{- end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+{{- if $svc.keyVaultMountEnabled }}
+          volumeMounts:
+            - name: keyvault-secrets
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: keyvault-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ $.Values.secrets.secretProviderClassName }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.image }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $svc.image }}
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+{{- end }}

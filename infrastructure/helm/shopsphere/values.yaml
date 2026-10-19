@@ -1,0 +1,67 @@
+replicaCount: 1
+
+image:
+  registry: acrshopspheredev.azurecr.io
+  tag: "71"
+  pullPolicy: Always
+
+frontend:
+  service:
+    type: LoadBalancer
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+services:
+  product:
+    image: product-service
+    port: 8000
+    databaseEnabled: true
+    redisEnabled: false
+    keyVaultMountEnabled: true
+  cart:
+    image: cart-service
+    port: 8000
+    databaseEnabled: false
+    redisEnabled: true
+    keyVaultMountEnabled: false
+  inventory:
+    image: inventory-service
+    port: 8000
+    databaseEnabled: true
+    redisEnabled: false
+    keyVaultMountEnabled: true
+  order:
+    image: order-service
+    port: 8000
+    databaseEnabled: true
+    redisEnabled: false
+    keyVaultMountEnabled: true
+  payment:
+    image: payment-service
+    port: 8000
+    databaseEnabled: false
+    redisEnabled: false
+    keyVaultMountEnabled: false
+
+postgres:
+  enabled: true
+  image: postgres:16
+  storage: 8Gi
+  storageClassName: default
+  database: ecommerce
+  username: ecommerce_user
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+
+secrets:
+  kubernetesSecretName: shopsphere-secrets
+  secretProviderClassName: shopsphere-keyvault
