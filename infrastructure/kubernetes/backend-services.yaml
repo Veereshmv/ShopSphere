@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: acrshopspheredev.azurecr.io/product-service:67
+          image: acrshopspheredev.azurecr.io/product-service:68
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -81,7 +81,7 @@ spec:
     spec:
       containers:
         - name: cart-service
-          image: acrshopspheredev.azurecr.io/cart-service:67
+          image: acrshopspheredev.azurecr.io/cart-service:68
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -134,7 +134,7 @@ spec:
     spec:
       containers:
         - name: inventory-service
-          image: acrshopspheredev.azurecr.io/inventory-service:67
+          image: acrshopspheredev.azurecr.io/inventory-service:68
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -201,7 +201,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: acrshopspheredev.azurecr.io/order-service:67
+          image: acrshopspheredev.azurecr.io/order-service:68
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -268,7 +268,7 @@ spec:
     spec:
       containers:
         - name: payment-service
-          image: acrshopspheredev.azurecr.io/payment-service:67
+          image: acrshopspheredev.azurecr.io/payment-service:68
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
