@@ -186,7 +186,7 @@ function renderCart() {
 async function loadCart() {
     try {
         const data = await request(
-            `${API.cart}/cart/${encodeURIComponent(currentUserId())}`
+            `${API.cart}/${encodeURIComponent(currentUserId())}`
         );
 
         // The cart service returns a hash of product IDs to JSON item strings.
@@ -215,7 +215,7 @@ async function addToCart(productId) {
 
     try {
         await request(
-            `${API.cart}/cart/${encodeURIComponent(currentUserId())}/items`,
+            `${API.cart}/${encodeURIComponent(currentUserId())}/items`,
             {
                 method: "POST",
                 body: JSON.stringify({
@@ -252,12 +252,12 @@ async function changeQuantity(productId, delta) {
         // The cart API adds quantities; it has no direct "set quantity" endpoint.
         // Remove the existing item and add the desired quantity instead.
         await request(
-            `${API.cart}/cart/${encodeURIComponent(currentUserId())}/items/${productId}`,
+            `${API.cart}/${encodeURIComponent(currentUserId())}/items/${productId}`,
             { method: "DELETE" }
         );
 
         await request(
-            `${API.cart}/cart/${encodeURIComponent(currentUserId())}/items`,
+            `${API.cart}/${encodeURIComponent(currentUserId())}/items`,
             {
                 method: "POST",
                 body: JSON.stringify({
@@ -280,7 +280,7 @@ async function changeQuantity(productId, delta) {
 async function removeCartItem(productId) {
     try {
         await request(
-            `${API.cart}/cart/${encodeURIComponent(currentUserId())}/items/${productId}`,
+            `${API.cart}/${encodeURIComponent(currentUserId())}/items/${productId}`,
             { method: "DELETE" }
         );
 
@@ -293,7 +293,7 @@ async function removeCartItem(productId) {
 
 async function clearCart() {
     await request(
-        `${API.cart}/cart/${encodeURIComponent(currentUserId())}`,
+        `${API.cart}/${encodeURIComponent(currentUserId())}`,
         { method: "DELETE" }
     );
     state.cart = [];
@@ -310,7 +310,7 @@ async function loadOrders() {
 
     try {
         const data = await request(
-            `${API.orders}/orders/user/${encodeURIComponent(userId)}`
+            `${API.orders}/user/${encodeURIComponent(userId)}`
         );
 
         state.orders = Array.isArray(data) ? data : (data.orders ?? []);
@@ -382,7 +382,7 @@ async function checkout(event) {
     try {
         // Step 1: Reserve stock for each cart item.
         for (const item of state.cart) {
-            await request(`${API.inventory}/inventory/reserve`, {
+            await request(`${API.inventory}/reserve`, {
                 method: "POST",
                 body: JSON.stringify({
                     product_id: Number(item.product_id),
@@ -394,7 +394,7 @@ async function checkout(event) {
         }
 
         // Step 2: Create the order.
-        order = await request(`${API.orders}/orders`, {
+        order = await request(`${API.orders}`, {
             method: "POST",
             body: JSON.stringify({
                 user_id: currentUserId(),
@@ -408,7 +408,7 @@ async function checkout(event) {
         });
 
         // Step 3: Simulate a payment. No card or banking details are used.
-        const payment = await request(`${API.payments}/payments`, {
+        const payment = await request(`${API.payments}`, {
             method: "POST",
             body: JSON.stringify({
                 order_id: Number(order.id),
@@ -445,7 +445,7 @@ async function checkout(event) {
         if (!order && reservedItems.length) {
             for (const item of reservedItems.reverse()) {
                 try {
-                    await request(`${API.inventory}/inventory/restock`, {
+                    await request(`${API.inventory}/restock`, {
                         method: "POST",
                         body: JSON.stringify({
                             product_id: Number(item.product_id),
