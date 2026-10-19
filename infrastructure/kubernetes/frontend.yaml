@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: acrshopspheredev.azurecr.io/frontend:70
+          image: acrshopspheredev.azurecr.io/frontend:71
           imagePullPolicy: Always
           ports:
             - containerPort: 80
