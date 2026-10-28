@@ -4,7 +4,7 @@ ShopSphere is a cloud-native e-commerce project that demonstrates the implementa
 
 The application uses an HTML and CSS frontend with six application components, including FastAPI-based product, cart, order, inventory, and simulated payment services.
 
-## Architecture
+## Architecture 
 
 ![ShopSphere Architecture](docs/screenshots/architecture.png)
 
