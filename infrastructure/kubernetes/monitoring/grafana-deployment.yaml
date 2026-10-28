@@ -13,8 +13,6 @@ spec:
       labels:
         app: grafana
     spec:
-      nodeSelector:
-        workload: monitoring
       containers:
         - name: grafana
           image: grafana/grafana:12.1.0
