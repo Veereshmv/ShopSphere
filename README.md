@@ -8,6 +8,12 @@ The project uses a simple HTML and CSS frontend with FastAPI-based backend micro
 
 ### Application Layer
 
+The following diagram illustrates the ShopSphere CI/CD pipeline,
+GitOps deployment workflow, application microservices, data layer,
+and monitoring setup.
+
+![ShopSphere Architecture](docs/screenshots/architecture.png)
+
 - **Frontend:** HTML and CSS
 - **Product Service:** FastAPI
 - **Cart Service:** FastAPI
