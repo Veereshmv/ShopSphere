@@ -19,8 +19,6 @@ spec:
       securityContext:
         fsGroup: 65534
       serviceAccountName: prometheus
-      nodeSelector:
-        workload: monitoring
       containers:
         - name: prometheus
           image: prom/prometheus:v3.5.0
